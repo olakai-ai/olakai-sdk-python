@@ -7,6 +7,7 @@ import asyncio
 from typing import Any, Callable, Dict, Literal, Optional, Union
 from .shared.types import OlakaiEventParams, MonitorPayload
 from .client.api import (
+    QUEUED_TIMEOUT_S,
     enqueue_monitoring,
     enqueue_send,
     send_feedback_to_api,
@@ -134,7 +135,10 @@ def olakai_feedback(
             )
 
         # Fire-and-forget via the background sender.
-        enqueue_send(config, lambda: send_feedback_to_api(config, payload))
+        enqueue_send(
+            config,
+            lambda: send_feedback_to_api(config, payload, QUEUED_TIMEOUT_S),
+        )
     except Exception as e:  # noqa: BLE001 - fire-and-forget
         # Never raise from feedback reporting. Best-effort debug log
         # only if the SDK is configured with debug=True.

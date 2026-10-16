@@ -49,7 +49,6 @@ python examples/openai_advanced_example.py
 All examples automatically track:
 - ✅ Token usage (input/output)
 - ✅ Model names
-- ✅ API keys (for cost analysis)
 - ✅ Request latency
 - ✅ Prompts and responses
 - ✅ User context and metadata

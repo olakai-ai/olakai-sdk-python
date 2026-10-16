@@ -33,6 +33,7 @@ async def make_api_call(
     config: OlakaiConfig,
     payload: Union[MonitorPayload, ControlPayload],
     call_type: Literal["monitoring", "control"] = "monitoring",
+    timeout: float = 30,
 ) -> Union[APIResponse, ControlResponse]:
     """Make API call with optional logging."""
 
@@ -85,7 +86,7 @@ async def make_api_call(
             url,
             json=data_dict,
             headers=headers,
-            timeout=30,  # Fixed timeout
+            timeout=timeout,
         )
 
         if config.debug:
@@ -101,7 +102,9 @@ async def make_api_call(
             return ControlResponse(**result)
 
     except requests.exceptions.Timeout as err:
-        raise APITimeoutError("Request timed out after 30 seconds") from err
+        raise APITimeoutError(
+            f"Request timed out after {timeout} seconds"
+        ) from err
     except requests.exceptions.HTTPError as err:
         raise APIResponseError(
             f"HTTP error: {err.response.status_code} - {err.response.text}"
@@ -119,6 +122,7 @@ async def send_with_retry(
     payload: Union[MonitorPayload, ControlPayload],
     call_type: Literal["monitoring", "control"] = "monitoring",
     max_retries: int = 3,
+    timeout: float = 30,
 ) -> Union[APIResponse, ControlResponse]:
     """Send payload with retry logic."""
 
@@ -126,7 +130,7 @@ async def send_with_retry(
 
     for attempt in range(max_retries + 1):
         try:
-            result = await make_api_call(config, payload, call_type)
+            result = await make_api_call(config, payload, call_type, timeout)
             if config.debug:
                 print("[Olakai SDK] API call successful")
             return result
@@ -152,6 +156,8 @@ async def send_with_retry(
 async def send_to_api_simple(
     config: OlakaiConfig,
     payload: MonitorPayload,
+    max_retries: int = 3,
+    timeout: float = 30,
 ) -> Optional[Union[APIResponse, ControlResponse]]:
     """Send payload to monitoring API.
 
@@ -161,7 +167,9 @@ async def send_to_api_simple(
     to use the return value.
     """
     try:
-        return await send_with_retry(config, payload, "monitoring")
+        return await send_with_retry(
+            config, payload, "monitoring", max_retries, timeout
+        )
     except Exception as e:  # noqa: BLE001 - fire-and-forget telemetry
         if config.debug:
             print(f"[Olakai SDK] Error sending payload to API: {e}")
@@ -171,6 +179,7 @@ async def send_to_api_simple(
 async def send_feedback_to_api(
     config: OlakaiConfig,
     payload: Dict[str, Any],
+    timeout: float = 30,
 ) -> None:
     """Send a feedback payload to the dedicated feedback endpoint.
 
@@ -197,7 +206,7 @@ async def send_feedback_to_api(
             url,
             json=payload,
             headers=headers,
-            timeout=30,
+            timeout=timeout,
         )
 
         if config.debug:
@@ -238,16 +247,34 @@ async def send_to_api(
 # so retry/backoff behaviour is unchanged. The control (blocking) path does
 # not use this queue.
 #
+# Queued sends use a short timeout and one retry (worst case ~11 s per
+# event) so an Olakai outage cannot stall the queue for minutes.
+#
 # When the queue is full, the NEW item is dropped (drop-newest) and a debug
-# line is printed. Queue and thread are re-created after os.fork().
+# line is printed. Queue and thread are re-created after os.fork() and if
+# the worker thread ever dies.
 
 _QUEUE_MAXSIZE = 1000
+QUEUED_TIMEOUT_S = 5.0
+QUEUED_MAX_RETRIES = 1
 
 _SendJob = Callable[[], Awaitable[Any]]
 
 _queue: Optional[queue.Queue] = None
 _pid: Optional[int] = None
+_thread: Optional[threading.Thread] = None
 _lock = threading.Lock()
+
+
+def _reset_sender() -> None:
+    """Forget queue/worker state (used in a forked child)."""
+    global _queue, _pid, _thread, _lock
+    _queue, _pid, _thread = None, None, None
+    _lock = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_sender)
 
 
 def _worker(q: queue.Queue) -> None:
@@ -256,27 +283,39 @@ def _worker(q: queue.Queue) -> None:
         job = q.get()
         try:
             loop.run_until_complete(job())
-        except Exception:  # noqa: BLE001, S110 - never kill the worker
+        except BaseException:  # noqa: BLE001, S110 - never kill the worker
             pass
         finally:
             q.task_done()
 
 
 def _get_queue() -> queue.Queue:
-    global _queue, _pid
-    pid = os.getpid()
-    if _queue is None or _pid != pid:
+    global _queue, _pid, _thread
+
+    def healthy() -> bool:
+        return (
+            _queue is not None
+            and _pid == os.getpid()
+            and _thread is not None
+            and _thread.is_alive()
+        )
+
+    if not healthy():
         with _lock:
-            if _queue is None or _pid != pid:
+            if not healthy():
                 q: queue.Queue = queue.Queue(_QUEUE_MAXSIZE)
-                threading.Thread(
+                t = threading.Thread(
                     target=_worker,
                     args=(q,),
                     name="olakai-sdk-sender",
                     daemon=True,
-                ).start()
-                _queue, _pid = q, pid
-    return _queue
+                )
+                t.start()
+                _queue, _pid, _thread = q, os.getpid(), t
+    current = _queue
+    if current is None:  # pragma: no cover - set above
+        raise RuntimeError("sender queue missing")
+    return current
 
 
 def enqueue_send(config: OlakaiConfig, job: _SendJob) -> None:
@@ -293,7 +332,12 @@ def enqueue_send(config: OlakaiConfig, job: _SendJob) -> None:
 
 def enqueue_monitoring(config: OlakaiConfig, payload: MonitorPayload) -> None:
     """Fire-and-forget a monitoring payload via the background sender."""
-    enqueue_send(config, lambda: send_to_api_simple(config, payload))
+    enqueue_send(
+        config,
+        lambda: send_to_api_simple(
+            config, payload, QUEUED_MAX_RETRIES, QUEUED_TIMEOUT_S
+        ),
+    )
 
 
 def olakai_flush(timeout: float = 5.0) -> bool:

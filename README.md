@@ -298,17 +298,25 @@ Provider API keys (OpenAI, Anthropic, Google) are never sent to Olakai.
 
 Events are queued and sent by one background thread, so a monitored call
 never waits on the Olakai API (sync and async code both work). Queued
-events are flushed automatically at process exit. To flush earlier (for
-example at the end of a serverless handler), call:
+events are flushed automatically at process exit (up to 5 seconds).
+
+**Serverless (for example AWS Lambda) must call `olakai_flush()` at the
+end of each handler.** The runtime freezes the process between calls,
+and `atexit` does not run on freeze, so queued events can be lost.
 
 ```python
 from olakaisdk import olakai_flush
 
-olakai_flush(timeout=5.0)  # True if everything was sent
+def handler(event, context):
+    ...
+    olakai_flush(timeout=5.0)  # True if everything was sent
 ```
 
-The queue holds up to 1000 events. When it is full, new events are
-dropped (a line is printed when `debug=True`).
+Each queued send uses a 5 second timeout and at most 1 retry, so one
+event costs at most about 11 seconds when the Olakai API is down. The
+queue holds up to 1000 events. When it is full, new events are dropped
+(a line is printed when `debug=True`). Blocking control calls keep their
+own settings (30 second timeout, 3 retries).
 
 ---
 
@@ -402,7 +410,7 @@ Where `OlakaiEventParams` has the fields:
 - `prompt` (str): Interaction prompt
 - `response` (str): Interaction response
 - `userEmail` (str, optional): User email for tracking
-- `userId` (str, optional): User ID for explicit user tracking
+- `sessionId` (str, optional): Groups events into a session/conversation
 - `task` (str, optional): High-level task category
 - `subTask` (str, optional): Specific subtask
 - `customData` (dict, optional): Custom metadata (string, int, float, or bool values)
@@ -418,7 +426,7 @@ olakai_event(OlakaiEventParams(
     prompt="Test prompt",
     response="Test response",
     userEmail="test@example.com",
-    userId="user-123",
+    sessionId="chat-123",
     task="test-task"
 ))
 ```

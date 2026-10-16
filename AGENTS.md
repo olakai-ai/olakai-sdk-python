@@ -176,7 +176,7 @@ examples/
 **`src/olakaisdk/shared/types.py`**
 
 - `OlakaiConfig`: SDK configuration (api_key, endpoint, debug, sessionId as UUID)
-- `OlakaiEventParams`: Event parameters (prompt, response, userEmail, userId, task, subTask, customData)
+- `OlakaiEventParams`: Event parameters (prompt, response, userEmail, sessionId, taskExecutionId, task, subTask, customData, shouldScore, tokens, requestTime, modelName)
 - `MonitorPayload`: API payload (customData replaces customDimensions/customMetrics)
 - Response types
 
@@ -206,6 +206,8 @@ examples/
 - All sends go through one bounded queue (`client/api.py`) drained by a
   daemon thread; callers never block (sync or async). Drop-newest when full.
 - `olakai_flush(timeout)` waits for the queue; registered with `atexit`
+- Queued sends: 5 s timeout, 1 retry; worker restarts if it dies;
+  state reset in forked children (`os.register_at_fork`)
 - Control (blocking) API calls do not use the queue
 - Errors in telemetry don't affect user code
 

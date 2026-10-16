@@ -1,6 +1,7 @@
 """Base interface for LLM provider instrumentation."""
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 
 class BaseInstrumentation(ABC):
@@ -19,7 +20,7 @@ class BaseInstrumentation(ABC):
         self,
         capture_inputs: bool = True,
         capture_outputs: bool = True,
-        capture_api_keys: bool = True
+        capture_api_keys: Optional[bool] = None,
     ) -> None:
         """
         Instrument the LLM provider SDK.
@@ -27,7 +28,8 @@ class BaseInstrumentation(ABC):
         Args:
             capture_inputs: Whether to capture prompt/input data
             capture_outputs: Whether to capture response/output data
-            capture_api_keys: Whether to track API key usage
+            capture_api_keys: Deprecated, ignored. The SDK never sends
+                provider API keys. Passing True emits a DeprecationWarning.
         """
         pass
 

@@ -20,20 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   event loop. Every send (instrumentation, `olakai_event()`,
   `olakai_feedback()`, `olakai_monitor` / `olakai_supervisor`) goes
   through one bounded queue drained by a daemon thread, with the existing
-  retry/backoff. Callers never block, and async callers no longer wait on
-  the Olakai API inside the event loop. When the queue (1000 events) is
-  full, new events are dropped (logged with `debug=True`). The queue is
-  re-created after `os.fork()`. The control (blocking) API is unchanged.
+  retry/backoff, limited to a 5 second timeout and 1 retry per queued
+  send. Callers never block, and async callers no longer wait on the
+  Olakai API inside the event loop. When the queue (1000 events) is full,
+  new events are dropped (logged with `debug=True`). The worker restarts
+  if it dies, and the queue is reset in forked children. The control
+  (blocking) API is unchanged (30 second timeout, 3 retries).
 - **Provider detection for OpenAI-compatible clients.** `customData.provider`
   comes from the client `base_url`: `openrouter.ai` -> `openrouter`,
-  `*.openai.azure.com` -> `azure`, `api.openai.com` or unset -> `openai`,
-  any other host -> the host name.
+  `*.openai.azure.com`, `*.cognitiveservices.azure.com` and
+  `*.services.ai.azure.com` -> `azure`, `api.openai.com` or unset ->
+  `openai`, any other host -> `openai-compatible` (host names are never
+  sent).
 
 ### Added
 
 - `olakai_flush(timeout=5.0) -> bool` waits until queued events are sent
   and returns `True` if the queue drained. It is registered with `atexit`,
-  so short-lived scripts deliver their events.
+  so short-lived scripts deliver their events. Serverless handlers must
+  call it themselves, because `atexit` does not run on freeze.
 - `OlakaiEventParams.modelName` (optional). Sent as `modelName`; omitted
   when `None`.
 

@@ -144,7 +144,8 @@ def detect_openai_provider(client_instance: Any) -> str:
     """Name the provider behind an OpenAI-compatible client from its base_url.
 
     ``client_instance`` is the ``Completions`` resource; its ``_client`` is
-    the ``OpenAI`` client. Unknown hosts are reported as the host itself.
+    the ``OpenAI`` client. Unknown hosts are reported as
+    ``"openai-compatible"`` so internal gateway names are never sent.
     """
     try:
         base_url = getattr(client_instance, "_client", None).base_url
@@ -155,6 +156,12 @@ def detect_openai_provider(client_instance: Any) -> str:
         return "openai"
     if host == "openrouter.ai" or host.endswith(".openrouter.ai"):
         return "openrouter"
-    if host.endswith(".openai.azure.com"):
+    if host.endswith(
+        (
+            ".openai.azure.com",
+            ".cognitiveservices.azure.com",
+            ".services.ai.azure.com",
+        )
+    ):
         return "azure"
-    return host
+    return "openai-compatible"
