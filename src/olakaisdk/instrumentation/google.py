@@ -2,7 +2,7 @@
 
 import time
 import warnings
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, Optional
 
 from ..config import require_config, get_config
 from ..context import get_current_context
@@ -14,7 +14,7 @@ from ..shared.types import MonitorPayload
 _original_sync_generate = None
 _original_async_generate = None
 _is_instrumented = False
-_instrumentation_options = {}
+_instrumentation_options: Dict[str, Any] = {}
 
 
 def instrument_google(
