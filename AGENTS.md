@@ -16,7 +16,7 @@ Olakai Python SDK v1.0.0 is an **auto-instrumentation SDK** for monitoring LLM u
 - **Streaming support**: Buffers streaming responses and sends telemetry when complete
 - **Server-focused**: Designed for backend applications (FastAPI, Flask, Django)
 - **Thread-safe**: Uses Python's contextvars for async safety
-- **Privacy controls**: Configure what data to capture (inputs, outputs, API keys)
+- **Privacy controls**: Configure what data to capture (inputs, outputs)
 
 ## Commands
 
@@ -169,7 +169,7 @@ examples/
 **`src/olakaisdk/extractors/openai_extractor.py`**
 
 - `OpenAIExtractor`: Extract telemetry from OpenAI responses
-- Extracts: tokens (input/output), model, API key, latency
+- Extracts: tokens (input/output), model, provider (from base_url), latency
 - Merges with context metadata
 - Privacy controls for redacting data
 
@@ -203,8 +203,10 @@ examples/
 
 **Fire-and-Forget Telemetry**
 
-- Sync calls: Try to create asyncio task, skip if no loop
-- Async calls: Properly await API calls
+- All sends go through one bounded queue (`client/api.py`) drained by a
+  daemon thread; callers never block (sync or async). Drop-newest when full.
+- `olakai_flush(timeout)` waits for the queue; registered with `atexit`
+- Control (blocking) API calls do not use the queue
 - Errors in telemetry don't affect user code
 
 ## Important Implementation Details
@@ -249,13 +251,8 @@ Streaming responses are handled specially:
 
 ### API Key Tracking
 
-The SDK captures the full API key for backend cost tracking. This is intentional for:
-
-- Per-API-key usage analysis
-- Cost attribution
-- ROI measurement per agent
-
-The API key is sent in `customDimensions["api_key"]`.
+The SDK never sends provider API keys (removed in 1.7.0). The
+`capture_api_keys` parameter is deprecated and ignored.
 
 ### Error Handling
 

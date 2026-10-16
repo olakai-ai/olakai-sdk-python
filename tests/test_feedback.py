@@ -20,12 +20,11 @@ def _reset_config():
 
 
 def _run_coroutines(loop):
-    """Drain any pending tasks on the loop so fire-and-forget sends run."""
-    pending = asyncio.all_tasks(loop)
-    if pending:
-        loop.run_until_complete(
-            asyncio.gather(*pending, return_exceptions=True)
-        )
+    """Wait for the background sender so fire-and-forget sends run."""
+    del loop
+    from src.olakaisdk.client.api import olakai_flush
+
+    assert olakai_flush(timeout=5.0)
 
 
 def test_olakai_feedback_posts_to_feedback_endpoint():

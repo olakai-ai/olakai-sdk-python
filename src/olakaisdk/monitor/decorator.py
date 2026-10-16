@@ -8,7 +8,7 @@ from ..shared import (
     MonitorOptions,
     MonitorPayload,
 )
-from ..client import send_to_api_simple
+from ..client.api import enqueue_monitoring
 from ..config import get_config
 
 
@@ -61,7 +61,7 @@ def olakai_monitor(**kwargs):
 
                 # Send to API
                 if config:
-                    await send_to_api_simple(config, payload)
+                    enqueue_monitoring(config, payload)
 
                 return result
 
@@ -84,7 +84,7 @@ def olakai_monitor(**kwargs):
 
                 # Send error to API
                 if config:
-                    await send_to_api_simple(config, payload)
+                    enqueue_monitoring(config, payload)
 
                 raise error  # Re-raise the original error
 
@@ -108,14 +108,9 @@ def olakai_monitor(**kwargs):
                     shouldScore=options.shouldScore,
                 )
 
-                # Send to API asynchronously (if event loop available)
+                # Send to API in the background
                 if config:
-                    try:
-                        asyncio.get_running_loop()
-                        asyncio.create_task(send_to_api_simple(config, payload))
-                    except RuntimeError:
-                        # No event loop running, skip API call
-                        pass
+                    enqueue_monitoring(config, payload)
 
                 return result
 
@@ -136,14 +131,9 @@ def olakai_monitor(**kwargs):
                     shouldScore=options.shouldScore,
                 )
 
-                # Send error to API asynchronously (if event loop available)
+                # Send error to API in the background
                 if config:
-                    try:
-                        asyncio.get_running_loop()
-                        asyncio.create_task(send_to_api_simple(config, payload))
-                    except RuntimeError:
-                        # No event loop running, skip API call
-                        pass
+                    enqueue_monitoring(config, payload)
 
                 raise error
 

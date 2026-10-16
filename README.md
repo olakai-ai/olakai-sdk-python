@@ -51,8 +51,7 @@ response = client.chat.completions.create(
 
 # That's it! Your call is now tracked with:
 # - Token counts (input/output)
-# - Model name
-# - API key (for cost tracking)
+# - Model name and provider
 # - Latency
 # - Request/response content
 ```
@@ -68,7 +67,7 @@ response = client.chat.completions.create(
 After calling `instrument_openai()`, the SDK automatically captures:
 
 - **Token usage** - Prompt tokens, completion tokens, total tokens
-- **Cost tracking** - API key identification for backend cost calculation
+- **Provider** - Detected from the client `base_url` (`openai`, `openrouter`, `azure`, or the host)
 - **Model information** - Which model was used (gpt-4, gpt-3.5-turbo, etc.)
 - **Latency** - Request duration in milliseconds
 - **Content** - Prompts and responses (configurable)
@@ -279,7 +278,6 @@ instrument_openai()
 instrument_openai(
     capture_inputs=True,      # Capture prompts/messages
     capture_outputs=True,     # Capture responses
-    capture_api_keys=True     # Track API keys for cost analysis
 )
 ```
 
@@ -291,9 +289,26 @@ Disable input/output capture for sensitive data:
 instrument_openai(
     capture_inputs=False,    # Don't send prompts
     capture_outputs=False,   # Don't send responses
-    capture_api_keys=True    # Still track tokens and costs
 )
 ```
+
+Provider API keys (OpenAI, Anthropic, Google) are never sent to Olakai.
+
+### Delivery
+
+Events are queued and sent by one background thread, so a monitored call
+never waits on the Olakai API (sync and async code both work). Queued
+events are flushed automatically at process exit. To flush earlier (for
+example at the end of a serverless handler), call:
+
+```python
+from olakaisdk import olakai_flush
+
+olakai_flush(timeout=5.0)  # True if everything was sent
+```
+
+The queue holds up to 1000 events. When it is full, new events are
+dropped (a line is printed when `debug=True`).
 
 ---
 
@@ -318,7 +333,7 @@ Initialize the Olakai SDK. Must be called before instrumentation.
 
 ---
 
-#### `instrument_openai(capture_inputs=True, capture_outputs=True, capture_api_keys=True)`
+#### `instrument_openai(capture_inputs=True, capture_outputs=True)`
 
 Auto-instrument OpenAI SDK for monitoring.
 
@@ -326,7 +341,8 @@ Auto-instrument OpenAI SDK for monitoring.
 
 - `capture_inputs` (bool): Capture prompt/messages
 - `capture_outputs` (bool): Capture responses
-- `capture_api_keys` (bool): Track API keys for cost analysis
+- `capture_api_keys` (bool): Deprecated and ignored. Provider API keys are
+  never sent. Passing `True` emits a `DeprecationWarning`.
 
 **Raises:**
 
@@ -393,6 +409,7 @@ Where `OlakaiEventParams` has the fields:
 - `shouldScore` (bool, optional): Whether scoring should be applied to the data
 - `tokens` (int, optional): Number of tokens used
 - `requestTime` (int, optional): Time in milliseconds of the interaction
+- `modelName` (str, optional): Model used (omitted from the payload when `None`)
 
 **Example:**
 

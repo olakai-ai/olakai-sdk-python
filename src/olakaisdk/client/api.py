@@ -3,8 +3,13 @@ Simplified API communication module for the Olakai SDK.
 """
 
 from dataclasses import asdict
-from typing import Any, Dict, Optional, Union, Literal
+from typing import Any, Awaitable, Callable, Dict, Optional, Union, Literal
 import asyncio
+import atexit
+import os
+import queue
+import threading
+import time
 from ..shared import (
     APITimeoutError,
     APIResponseError,
@@ -222,3 +227,95 @@ async def send_to_api(
         return await send_to_api_simple(config, payload)
     else:
         return await send_with_retry(config, payload, "control")
+
+
+# --- Background sender -------------------------------------------------------
+#
+# Every fire-and-forget send (monitoring events, feedback) goes through one
+# bounded queue drained by one daemon thread. Callers only enqueue, so the
+# user's thread or event loop never waits on the network. The worker runs the
+# existing coroutines (send_to_api_simple -> send_with_retry) on its own loop,
+# so retry/backoff behaviour is unchanged. The control (blocking) path does
+# not use this queue.
+#
+# When the queue is full, the NEW item is dropped (drop-newest) and a debug
+# line is printed. Queue and thread are re-created after os.fork().
+
+_QUEUE_MAXSIZE = 1000
+
+_SendJob = Callable[[], Awaitable[Any]]
+
+_queue: Optional[queue.Queue] = None
+_pid: Optional[int] = None
+_lock = threading.Lock()
+
+
+def _worker(q: queue.Queue) -> None:
+    loop = asyncio.new_event_loop()
+    while True:
+        job = q.get()
+        try:
+            loop.run_until_complete(job())
+        except Exception:  # noqa: BLE001, S110 - never kill the worker
+            pass
+        finally:
+            q.task_done()
+
+
+def _get_queue() -> queue.Queue:
+    global _queue, _pid
+    pid = os.getpid()
+    if _queue is None or _pid != pid:
+        with _lock:
+            if _queue is None or _pid != pid:
+                q: queue.Queue = queue.Queue(_QUEUE_MAXSIZE)
+                threading.Thread(
+                    target=_worker,
+                    args=(q,),
+                    name="olakai-sdk-sender",
+                    daemon=True,
+                ).start()
+                _queue, _pid = q, pid
+    return _queue
+
+
+def enqueue_send(config: OlakaiConfig, job: _SendJob) -> None:
+    """Schedule ``job`` on the background sender. Never blocks or raises."""
+    try:
+        _get_queue().put_nowait(job)
+    except queue.Full:
+        if config.debug:
+            print("[Olakai SDK] Send queue full, dropping event")
+    except Exception as e:  # noqa: BLE001 - fire-and-forget
+        if config.debug:
+            print(f"[Olakai SDK] Failed to enqueue event: {e}")
+
+
+def enqueue_monitoring(config: OlakaiConfig, payload: MonitorPayload) -> None:
+    """Fire-and-forget a monitoring payload via the background sender."""
+    enqueue_send(config, lambda: send_to_api_simple(config, payload))
+
+
+def olakai_flush(timeout: float = 5.0) -> bool:
+    """Wait until queued telemetry is sent, or ``timeout`` seconds pass.
+
+    Returns True if the queue drained, False on timeout. Never raises.
+    Registered with ``atexit`` so short-lived scripts deliver their events.
+    """
+    try:
+        q = _queue
+        if q is None or _pid != os.getpid():
+            return True
+        deadline = time.monotonic() + timeout
+        with q.all_tasks_done:
+            while q.unfinished_tasks:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                q.all_tasks_done.wait(remaining)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+atexit.register(olakai_flush)

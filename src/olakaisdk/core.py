@@ -6,7 +6,11 @@ import time
 import asyncio
 from typing import Any, Callable, Dict, Literal, Optional, Union
 from .shared.types import OlakaiEventParams, MonitorPayload
-from .client.api import send_feedback_to_api, send_to_api_simple
+from .client.api import (
+    enqueue_monitoring,
+    enqueue_send,
+    send_feedback_to_api,
+)
 from .config import get_config, require_config
 
 
@@ -32,16 +36,12 @@ def olakai(params: OlakaiEventParams) -> None:
         subTask=params.subTask,
         customData=params.customData,
         shouldScore=params.shouldScore,
+        modelName=params.modelName,
     )
 
-    # Send asynchronously in background if possible, otherwise ignore
-    try:
-        asyncio.get_running_loop()
-        asyncio.create_task(send_to_api_simple(config, payload))
-    except RuntimeError:
-        # No event loop running, skip API call
-        if config.debug:
-            print("[Olakai SDK] Skipping API call - no event loop running")
+    # Fire-and-forget via the background sender (works with or without
+    # a running event loop; never blocks the caller)
+    enqueue_monitoring(config, payload)
 
 
 def olakai_event(params: OlakaiEventParams) -> None:
@@ -133,18 +133,8 @@ def olakai_feedback(
                 f"turnIndex={turn_index}"
             )
 
-        # Fire-and-forget: schedule the send on the running event
-        # loop if one is available, otherwise skip quietly (matching
-        # olakai() behaviour).
-        try:
-            asyncio.get_running_loop()
-            asyncio.create_task(send_feedback_to_api(config, payload))
-        except RuntimeError:
-            if config.debug:
-                print(
-                    "[Olakai SDK] Skipping feedback API call - "
-                    "no event loop running"
-                )
+        # Fire-and-forget via the background sender.
+        enqueue_send(config, lambda: send_feedback_to_api(config, payload))
     except Exception as e:  # noqa: BLE001 - fire-and-forget
         # Never raise from feedback reporting. Best-effort debug log
         # only if the SDK is configured with debug=True.

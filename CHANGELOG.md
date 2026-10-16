@@ -5,6 +5,38 @@ All notable changes to the Olakai Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-16
+
+### Security
+
+- **Provider API keys are never sent.** The OpenAI, Anthropic, and Google
+  instrumentations no longer put the provider key in
+  `customData.api_key` (success and error paths). `capture_api_keys` is
+  deprecated and ignored; passing `True` emits a `DeprecationWarning`.
+
+### Fixed
+
+- **Sync clients now report events.** Telemetry no longer needs a running
+  event loop. Every send (instrumentation, `olakai_event()`,
+  `olakai_feedback()`, `olakai_monitor` / `olakai_supervisor`) goes
+  through one bounded queue drained by a daemon thread, with the existing
+  retry/backoff. Callers never block, and async callers no longer wait on
+  the Olakai API inside the event loop. When the queue (1000 events) is
+  full, new events are dropped (logged with `debug=True`). The queue is
+  re-created after `os.fork()`. The control (blocking) API is unchanged.
+- **Provider detection for OpenAI-compatible clients.** `customData.provider`
+  comes from the client `base_url`: `openrouter.ai` -> `openrouter`,
+  `*.openai.azure.com` -> `azure`, `api.openai.com` or unset -> `openai`,
+  any other host -> the host name.
+
+### Added
+
+- `olakai_flush(timeout=5.0) -> bool` waits until queued events are sent
+  and returns `True` if the queue drained. It is registered with `atexit`,
+  so short-lived scripts deliver their events.
+- `OlakaiEventParams.modelName` (optional). Sent as `modelName`; omitted
+  when `None`.
+
 ## [1.6.0] - 2026-05-04
 
 ### Added

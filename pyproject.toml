@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "olakai-sdk"
-version = "1.6.0"
+version = "1.7.0"
 description = "Auto-instrumentation SDK for monitoring and tracking LLM usage (OpenAI, Anthropic, etc.)"
 authors = [
     { name="Olakai", email="support@olakai.ai" }
