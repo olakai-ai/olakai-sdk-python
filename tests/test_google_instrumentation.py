@@ -179,8 +179,8 @@ def test_google_extractor_extracts_tokens():
     assert payload.customData["tokens_output"] == 200
 
 
-def test_google_extractor_captures_api_key():
-    """Test that extractor captures API key when enabled."""
+def test_google_extractor_never_sends_api_key():
+    """Provider keys are never sent, even with capture_api_keys=True."""
     from src.olakaisdk.extractors.google_extractor import (
         GoogleExtractor,
     )
@@ -208,8 +208,8 @@ def test_google_extractor_captures_api_key():
         context=None,
     )
 
-    assert "api_key" in payload.customData
-    assert payload.customData["api_key"] == "AIzaSy-test123"
+    assert "api_key" not in payload.customData
+    assert "AIzaSy-test123" not in str(payload)
 
 
 def test_google_extractor_redacts_when_disabled():

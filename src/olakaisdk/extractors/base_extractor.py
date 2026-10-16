@@ -15,7 +15,7 @@ class BaseExtractor(ABC):
         self,
         capture_inputs: bool = True,
         capture_outputs: bool = True,
-        capture_api_keys: bool = True
+        capture_api_keys: bool = False  # deprecated, ignored
     ):
         self.capture_inputs = capture_inputs
         self.capture_outputs = capture_outputs

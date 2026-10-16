@@ -117,7 +117,6 @@ olakai_event(OlakaiEventParams(
     prompt="Generate a product description for wireless headphones",
     response="Experience crystal-clear sound with our premium wireless headphones...",
     userEmail="marketing@company.com",
-    userId="user-12345",
     task="Content Generation",
     subTask="product-description",
     customData={

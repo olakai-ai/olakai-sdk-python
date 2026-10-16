@@ -1,6 +1,7 @@
 """Extract telemetry data from OpenAI API responses."""
 
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 from ..shared.types import MonitorPayload
 from ..context import OlakaiContextData
 from .base_extractor import BaseExtractor
@@ -49,11 +50,6 @@ class OpenAIExtractor(BaseExtractor):
         prompt_text = self._extract_prompt(messages) if self.capture_inputs else "[redacted]"
         response_text = self._extract_response(response) if self.capture_outputs else "[redacted]"
 
-        # Extract API key (full key for backend cost tracking)
-        api_key_value = None
-        if self.capture_api_keys and hasattr(client_instance, "api_key"):
-            api_key_value = client_instance.api_key
-
         # Get context data or use defaults
         context_data = context or OlakaiContextData()
 
@@ -61,15 +57,11 @@ class OpenAIExtractor(BaseExtractor):
         custom_data = dict(context_data.customData or {})
         custom_data.update({
             "model": model,
-            "provider": "openai",
+            "provider": detect_openai_provider(client_instance),
             "tokens_input": tokens_input,
             "tokens_output": tokens_output,
             "tokens_total": tokens_total,
         })
-
-        # Add API key if captured
-        if api_key_value:
-            custom_data["api_key"] = api_key_value
 
         # Get chatId from config sessionId
         config = require_config()
@@ -146,3 +138,30 @@ class OpenAIExtractor(BaseExtractor):
 
         # Fallback: return string representation
         return str(response)
+
+
+def detect_openai_provider(client_instance: Any) -> str:
+    """Name the provider behind an OpenAI-compatible client from its base_url.
+
+    ``client_instance`` is the ``Completions`` resource; its ``_client`` is
+    the ``OpenAI`` client. Unknown hosts are reported as
+    ``"openai-compatible"`` so internal gateway names are never sent.
+    """
+    try:
+        base_url = getattr(client_instance, "_client", None).base_url
+        host = urlparse(str(base_url)).hostname
+    except Exception:  # noqa: BLE001 - unknown client shape
+        host = None
+    if not host or host == "api.openai.com":
+        return "openai"
+    if host == "openrouter.ai" or host.endswith(".openrouter.ai"):
+        return "openrouter"
+    if host.endswith(
+        (
+            ".openai.azure.com",
+            ".cognitiveservices.azure.com",
+            ".services.ai.azure.com",
+        )
+    ):
+        return "azure"
+    return "openai-compatible"

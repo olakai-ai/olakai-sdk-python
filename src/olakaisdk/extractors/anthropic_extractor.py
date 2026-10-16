@@ -57,11 +57,6 @@ class AnthropicExtractor(BaseExtractor):
             else "[redacted]"
         )
 
-        # Extract API key if available
-        api_key_value = None
-        if self.capture_api_keys:
-            api_key_value = _get_anthropic_api_key(client_instance)
-
         # Get context data or use defaults
         context_data = context or OlakaiContextData()
 
@@ -76,10 +71,6 @@ class AnthropicExtractor(BaseExtractor):
                 "tokens_total": tokens_total,
             }
         )
-
-        # Add API key if captured
-        if api_key_value:
-            custom_data["api_key"] = api_key_value
 
         # Get chatId from config sessionId
         config = require_config()
@@ -164,32 +155,3 @@ class AnthropicExtractor(BaseExtractor):
 
         return str(response)
 
-
-def _get_anthropic_api_key(
-    client_instance: Any,
-) -> Optional[str]:
-    """
-    Attempt to extract the Anthropic API key from the client.
-
-    Args:
-        client_instance: Messages resource instance
-
-    Returns:
-        API key string or None
-    """
-    try:
-        # The Messages resource has a _client attribute
-        # pointing to the Anthropic client
-        if hasattr(client_instance, "_client"):
-            client = client_instance._client
-            if hasattr(client, "api_key"):
-                return client.api_key
-
-        # Try direct api_key attribute
-        if hasattr(client_instance, "api_key"):
-            return client_instance.api_key
-
-    except Exception:
-        pass
-
-    return None

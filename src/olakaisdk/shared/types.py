@@ -36,6 +36,7 @@ class OlakaiEventParams:
     shouldScore: bool = True
     tokens: Optional[int] = 0
     requestTime: Optional[int] = 0
+    modelName: Optional[str] = None  # Omitted from the payload when None
 
 
 @dataclass

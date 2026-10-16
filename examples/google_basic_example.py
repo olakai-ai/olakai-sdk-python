@@ -171,7 +171,6 @@ async def main():
     print("What was tracked:")
     print("  - Token usage (input/output)")
     print("  - Model names")
-    print("  - API key (for cost tracking)")
     print("  - Latency")
     print("  - User context and metadata")
     print("  - Custom data")

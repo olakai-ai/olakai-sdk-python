@@ -61,13 +61,6 @@ class GoogleExtractor(BaseExtractor):
             else "[redacted]"
         )
 
-        # Extract API key if available
-        api_key_value = None
-        if self.capture_api_keys:
-            # Google GenAI stores the API key in the client's
-            # _client or via genai.configure
-            api_key_value = _get_google_api_key(client_instance)
-
         # Get context data or use defaults
         context_data = context or OlakaiContextData()
 
@@ -82,10 +75,6 @@ class GoogleExtractor(BaseExtractor):
                 "tokens_total": tokens_total,
             }
         )
-
-        # Add API key if captured
-        if api_key_value:
-            custom_data["api_key"] = api_key_value
 
         # Get chatId from config sessionId
         config = require_config()
@@ -182,40 +171,3 @@ class GoogleExtractor(BaseExtractor):
 
         return str(response)
 
-
-def _get_google_api_key(client_instance: Any) -> Optional[str]:
-    """
-    Attempt to extract the Google API key from the client.
-
-    Args:
-        client_instance: GenerativeModel instance
-
-    Returns:
-        API key string or None
-    """
-    try:
-        # Try the model's client
-        if hasattr(client_instance, "_client"):
-            client = client_instance._client
-            if hasattr(client, "api_key"):
-                return client.api_key
-            if hasattr(client, "_api_key"):
-                return client._api_key
-
-        # Try the global configuration
-        try:
-            import google.generativeai as genai
-
-            if hasattr(genai, "_api_key"):
-                return genai._api_key
-            if hasattr(genai, "configure"):
-                # Check the default client
-                client = getattr(genai, "_client", None)
-                if client and hasattr(client, "api_key"):
-                    return client.api_key
-        except ImportError:
-            pass
-    except Exception:
-        pass
-
-    return None

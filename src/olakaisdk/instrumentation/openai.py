@@ -1,26 +1,29 @@
 """OpenAI SDK instrumentation via monkey patching."""
 
 import time
-import asyncio
-from typing import Any, Callable, Iterator
+import warnings
+from typing import Any, Callable, Dict, Iterator, Optional
 
 from ..config import require_config, get_config
 from ..context import get_current_context
-from ..extractors.openai_extractor import OpenAIExtractor
-from ..client.api import send_to_api_simple
+from ..extractors.openai_extractor import (
+    OpenAIExtractor,
+    detect_openai_provider,
+)
+from ..client.api import enqueue_monitoring
 from ..shared.types import MonitorPayload
 
 # Store original methods
 _original_sync_create = None
 _original_async_create = None
 _is_instrumented = False
-_instrumentation_options = {}
+_instrumentation_options: Dict[str, Any] = {}
 
 
 def instrument_openai(
     capture_inputs: bool = True,
     capture_outputs: bool = True,
-    capture_api_keys: bool = True
+    capture_api_keys: Optional[bool] = None
 ) -> None:
     """
     Instrument OpenAI SDK for automatic monitoring.
@@ -31,7 +34,8 @@ def instrument_openai(
     Args:
         capture_inputs: Capture prompt/messages (default: True)
         capture_outputs: Capture responses (default: True)
-        capture_api_keys: Track API key usage (default: True)
+        capture_api_keys: Deprecated, ignored. The SDK never sends
+            provider API keys. Passing True emits a DeprecationWarning.
 
     Raises:
         RuntimeError: If SDK not configured with olakai_config()
@@ -53,6 +57,15 @@ def instrument_openai(
 
     # Verify SDK is configured
     config = require_config()
+
+    if capture_api_keys:
+        warnings.warn(
+            "capture_api_keys is deprecated and ignored: the Olakai SDK "
+            "never sends provider API keys.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+    capture_api_keys = False
 
     # Store instrumentation options
     _instrumentation_options = {
@@ -265,8 +278,8 @@ async def _trace_openai_call_async(
             # Get sessionId from config
             payload.chatId = config.sessionId
 
-            # Send telemetry (await in async context)
-            await send_to_api_simple(config, payload)
+            # Send telemetry (fire-and-forget)
+            enqueue_monitoring(config, payload)
 
             return response
 
@@ -361,7 +374,7 @@ async def _wrap_stream_async(
             if config:
                 # Get sessionId from config
                 payload.chatId = config.sessionId
-                await send_to_api_simple(config, payload)
+                enqueue_monitoring(config, payload)
 
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -428,13 +441,7 @@ def _send_telemetry_sync(payload: MonitorPayload) -> None:
     if not config:
         return
 
-    try:
-        asyncio.get_running_loop()
-        asyncio.create_task(send_to_api_simple(config, payload))
-    except RuntimeError:
-        # No event loop, skip (or could use threading)
-        if config.debug:
-            print("[Olakai SDK] No event loop running, skipping telemetry")
+    enqueue_monitoring(config, payload)
 
 
 def _send_error_telemetry(
@@ -452,23 +459,15 @@ def _send_error_telemetry(
     try:
         context_data = get_current_context()
 
-        # Extract API key if enabled
-        api_key_value = None
-        if capture_api_keys and hasattr(client_instance, "api_key"):
-            api_key_value = client_instance.api_key
-
         custom_data = {}
         if context_data:
             custom_data = dict(context_data.customData or {})
 
         custom_data.update({
             "model": request_kwargs.get("model", "unknown"),
-            "provider": "openai",
+            "provider": detect_openai_provider(client_instance),
             "error_type": type(error).__name__,
         })
-
-        if api_key_value:
-            custom_data["api_key"] = api_key_value
 
         payload = MonitorPayload(
             userEmail=(context_data.userEmail if context_data else None) or "anonymous@olakai.ai",
