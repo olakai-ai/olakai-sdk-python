@@ -450,3 +450,52 @@ def test_forked_child_gets_its_own_worker(stub):
         time.sleep(0.05)
     assert os.waitstatus_to_exitcode(status) == 0
     assert [e["prompt"] for e in stub.events()] == ["parent", "child"]
+
+
+@pytest.mark.parametrize(
+    "cost, expected",
+    [
+        (0.00123, 0.00123),
+        (0, 0.0),
+        (None, None),
+        ("0.1", None),
+        (-1, None),
+        (float("inf"), None),
+        (True, None),
+        (20000, None),
+    ],
+)
+def test_openai_usage_cost_becomes_provider_cost(
+    stub, monkeypatch, cost, expected
+):
+    import openai
+
+    usage = dict(COMPLETION["usage"])
+    if cost is not None:
+        usage["cost"] = cost
+    monkeypatch.setitem(COMPLETION, "usage", usage)
+    instrument_openai()
+    client = openai.OpenAI(api_key=SENTINEL, base_url=stub.url + "/v1")
+    client.chat.completions.create(model="m", messages=[])
+    assert olakai_flush(timeout=5)
+    [event] = stub.events()
+    assert event.get("providerCostUsd") == expected
+    if expected is None:
+        assert "providerCostUsd" not in event
+
+
+def test_event_provider_cost_present_valid_absent_otherwise(stub):
+    olakai_event(
+        OlakaiEventParams(prompt="a", response="r", providerCostUsd=0.5)
+    )
+    olakai_event(OlakaiEventParams(prompt="b", response="r"))
+    olakai_event(
+        OlakaiEventParams(
+            prompt="c", response="r", providerCostUsd=float("nan")
+        )
+    )
+    assert olakai_flush(timeout=5)
+    by_prompt = {e["prompt"]: e for e in stub.events()}
+    assert by_prompt["a"]["providerCostUsd"] == 0.5
+    assert "providerCostUsd" not in by_prompt["b"]
+    assert "providerCostUsd" not in by_prompt["c"]

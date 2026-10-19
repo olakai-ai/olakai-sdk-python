@@ -32,7 +32,7 @@ from .shared import (
     OlakaiConfig,
 )
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 
 __all__ = [
     # Primary API (1.0.0)

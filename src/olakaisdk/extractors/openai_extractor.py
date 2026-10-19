@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
-from ..shared.types import MonitorPayload
+from ..shared.types import MonitorPayload, valid_provider_cost
 from ..context import OlakaiContextData
 from .base_extractor import BaseExtractor
 from ..config import require_config
@@ -81,6 +81,9 @@ class OpenAIExtractor(BaseExtractor):
             customData=custom_data,
             shouldScore=True,
             modelName=model,
+            providerCostUsd=extract_provider_cost(
+                getattr(response, "usage", None)
+            ),
         )
 
         return payload
@@ -165,3 +168,21 @@ def detect_openai_provider(client_instance: Any) -> str:
     ):
         return "azure"
     return "openai-compatible"
+
+
+def extract_provider_cost(usage: Any) -> Optional[float]:
+    """Read the real charge (USD) from ``usage.cost`` when present.
+
+    OpenRouter returns it; the openai client keeps unknown fields as
+    attributes and in ``model_extra``. Never raises; odd values -> None.
+    """
+    try:
+        if isinstance(usage, dict):
+            cost = usage.get("cost")
+        else:
+            cost = getattr(usage, "cost", None)
+            if cost is None:
+                cost = (getattr(usage, "model_extra", None) or {}).get("cost")
+        return valid_provider_cost(cost)
+    except Exception:  # noqa: BLE001 - unknown usage shape
+        return None
