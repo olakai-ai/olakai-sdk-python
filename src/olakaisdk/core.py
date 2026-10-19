@@ -38,6 +38,7 @@ def olakai(params: OlakaiEventParams) -> None:
         customData=params.customData,
         shouldScore=params.shouldScore,
         modelName=params.modelName,
+        providerCostUsd=params.providerCostUsd,
     )
 
     # Fire-and-forget via the background sender (works with or without

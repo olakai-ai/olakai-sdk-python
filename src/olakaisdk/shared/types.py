@@ -4,11 +4,25 @@ Simplified types for the Olakai SDK.
 
 from dataclasses import dataclass, field
 from typing import Optional, List, Union, Dict
+import math
 import uuid
 
 JSONType = Union[
     None, bool, int, float, str, Dict[str, "JSONType"], List["JSONType"]
 ]
+
+
+# Backend accepts 0..10000 USD; anything else would reject the event.
+MAX_PROVIDER_COST_USD = 10000
+
+
+def valid_provider_cost(value: object) -> Optional[float]:
+    """Return ``value`` as a USD cost if it is a finite number in range."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(value) or not 0 <= value <= MAX_PROVIDER_COST_USD:
+        return None
+    return float(value)
 
 
 @dataclass
@@ -37,6 +51,8 @@ class OlakaiEventParams:
     tokens: Optional[int] = 0
     requestTime: Optional[int] = 0
     modelName: Optional[str] = None  # Omitted from the payload when None
+    # Real provider charge in USD for this call. Omitted when None or invalid.
+    providerCostUsd: Optional[float] = None
 
 
 @dataclass
@@ -71,6 +87,7 @@ class MonitorPayload:
     customData: Optional[Dict[str, Union[str, int, float, bool]]] = None
     shouldScore: Optional[bool] = True
     modelName: Optional[str] = None
+    providerCostUsd: Optional[float] = None
 
 
 @dataclass

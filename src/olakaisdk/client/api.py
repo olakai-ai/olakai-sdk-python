@@ -21,6 +21,7 @@ from ..shared import (
     ControlResponse,
     ControlDetails,
 )
+from ..shared.types import valid_provider_cost
 
 # Import requests only when needed
 try:
@@ -64,6 +65,9 @@ async def make_api_call(
             del data_dict["shouldScore"]
         if "modelName" in data_dict and data_dict["modelName"] is None:
             del data_dict["modelName"]
+        cost = valid_provider_cost(data_dict.pop("providerCostUsd", None))
+        if cost is not None:
+            data_dict["providerCostUsd"] = cost
     else:
         if (
             "overrideControlCriteria" in data_dict
