@@ -499,3 +499,15 @@ def test_event_provider_cost_present_valid_absent_otherwise(stub):
     assert by_prompt["a"]["providerCostUsd"] == 0.5
     assert "providerCostUsd" not in by_prompt["b"]
     assert "providerCostUsd" not in by_prompt["c"]
+
+
+def test_extract_provider_cost_model_extra_and_dict_branches():
+    from src.olakaisdk.extractors.openai_extractor import extract_provider_cost
+
+    class Usage:
+        model_extra = {"cost": 0.2}
+
+    assert extract_provider_cost(Usage()) == 0.2
+    assert extract_provider_cost({"cost": 1}) == 1.0
+    assert extract_provider_cost(None) is None
+    assert extract_provider_cost(object()) is None
