@@ -511,3 +511,22 @@ def test_extract_provider_cost_model_extra_and_dict_branches():
     assert extract_provider_cost({"cost": 1}) == 1.0
     assert extract_provider_cost(None) is None
     assert extract_provider_cost(object()) is None
+
+
+def test_user_email_sent_as_email_wire_key(stub):
+    # OLA-2024: the server reads `email`; `userEmail` was dropped silently.
+    olakai_event(
+        OlakaiEventParams(prompt="a", response="r", userEmail="u@example.com")
+    )
+    assert olakai_flush(timeout=5)
+    [event] = stub.events()
+    assert event["email"] == "u@example.com"
+    assert "userEmail" not in event
+
+
+def test_no_user_sends_no_email_key(stub):
+    olakai_event(OlakaiEventParams(prompt="a", response="r"))
+    assert olakai_flush(timeout=5)
+    [event] = stub.events()
+    assert "email" not in event
+    assert "userEmail" not in event
