@@ -522,3 +522,11 @@ def test_user_email_sent_as_email_wire_key(stub):
     [event] = stub.events()
     assert event["email"] == "u@example.com"
     assert "userEmail" not in event
+
+
+def test_no_user_sends_no_email_key(stub):
+    olakai_event(OlakaiEventParams(prompt="a", response="r"))
+    assert olakai_flush(timeout=5)
+    [event] = stub.events()
+    assert "email" not in event
+    assert "userEmail" not in event

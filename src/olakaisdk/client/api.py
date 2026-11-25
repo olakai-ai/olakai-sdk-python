@@ -49,8 +49,11 @@ async def make_api_call(
     # Clean up None values
     if call_type == "monitoring":
         # The ingest route reads `email`; `userEmail` is the public SDK name.
-        if "userEmail" in data_dict:
-            data_dict["email"] = data_dict.pop("userEmail")
+        # Omit the anonymous default, as the TS SDK does: the server would
+        # look it up and log a "user not found" ErrorLog row per event.
+        email = data_dict.pop("userEmail", None)
+        if email and email != "anonymous@olakai.ai":
+            data_dict["email"] = email
         if "errorMessage" in data_dict and data_dict["errorMessage"] is None:
             del data_dict["errorMessage"]
         if (

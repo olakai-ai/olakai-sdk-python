@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **User attribution on monitoring events.** The SDK sent the end user as
   `userEmail`, but the ingest API reads `email`, so events were stored with
   no user. The wire key is now `email`. The public parameter name
-  (`userEmail`) does not change (OLA-2024).
+  (`userEmail`) does not change. Events with no user set send no
+  `email` key, as the TypeScript SDK does (OLA-2024).
 
 ## [1.8.0] - 2026-10-19
 
