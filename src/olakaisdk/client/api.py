@@ -48,6 +48,9 @@ async def make_api_call(
 
     # Clean up None values
     if call_type == "monitoring":
+        # The ingest route reads `email`; `userEmail` is the public SDK name.
+        if "userEmail" in data_dict:
+            data_dict["email"] = data_dict.pop("userEmail")
         if "errorMessage" in data_dict and data_dict["errorMessage"] is None:
             del data_dict["errorMessage"]
         if (

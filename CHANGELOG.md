@@ -5,6 +5,15 @@ All notable changes to the Olakai Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-11-25
+
+### Fixed
+
+- **User attribution on monitoring events.** The SDK sent the end user as
+  `userEmail`, but the ingest API reads `email`, so events were stored with
+  no user. The wire key is now `email`. The public parameter name
+  (`userEmail`) does not change (OLA-2024).
+
 ## [1.8.0] - 2026-10-19
 
 ### Added
